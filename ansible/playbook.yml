@@ -1,0 +1,90 @@
+---
+- name: Deploiement de l'application sur le serveur de production
+  hosts: app_servers
+  become: true
+  vars:
+    project_dir: "/home/ubuntu/app-stack"
+
+  tasks:
+    # --------------------------------------------------------
+    # 1. INSTALLATION DE DOCKER
+    # --------------------------------------------------------
+    - name: Mise a jour du cache APT
+      apt:
+        update_cache: yes
+
+    - name: Installation de Docker et outils
+      apt:
+        name:
+          - docker.io
+          - docker-compose-v2
+        state: present
+
+    - name: Ajout de l'utilisateur ubuntu au groupe docker
+      user:
+        name: ubuntu
+        groups: docker
+        append: yes
+
+    - name: Demarrage et activation de Docker
+      systemd:
+        name: docker
+        state: started
+        enabled: true
+
+    # --------------------------------------------------------
+    # 2. AUTHENTIFICATION AU REGISTRE PRIVE
+    # --------------------------------------------------------
+    - name: Login au registre Docker prive
+      command: >
+        docker login {{ registry_url }}
+        -u {{ registry_user }}
+        -p {{ registry_password }}
+
+    # --------------------------------------------------------
+    # 3. CREATION DE L'ARBORESCENCE
+    # --------------------------------------------------------
+    - name: Creation du dossier projet
+      file:
+        path: "{{ project_dir }}"
+        state: directory
+        owner: ubuntu
+        group: ubuntu
+        mode: '0755'
+
+    # --------------------------------------------------------
+    # 4. DEPLOIEMENT DU DOCKER-COMPOSE
+    # --------------------------------------------------------
+    - name: Copie du docker-compose.prod.yml
+      template:
+        src: docker-compose.prod.yml
+        dest: "{{ project_dir }}/docker-compose.yml"
+        owner: ubuntu
+        group: ubuntu
+        mode: '0644'
+
+    # --------------------------------------------------------
+    # 5. PULL DES IMAGES & DEMARRAGE
+    # --------------------------------------------------------
+    - name: Pull des images depuis le registre prive
+      command: docker compose pull
+      args:
+        chdir: "{{ project_dir }}"
+
+    - name: Arret de l'ancienne stack (si existante)
+      command: docker compose down
+      args:
+        chdir: "{{ project_dir }}"
+      ignore_errors: true
+
+    - name: Demarrage de la stack
+      command: docker compose up -d
+      args:
+        chdir: "{{ project_dir }}"
+
+    # --------------------------------------------------------
+    # 6. ATTENTE QUE LES SERVICES SOIENT PRETS
+    # --------------------------------------------------------
+    - name: Attente du demarrage des conteneurs
+      pause:
+        seconds: 10

@@ -4,9 +4,9 @@ services:
     container_name: app-db
     restart: always
     environment:
-      POSTGRES_DB: ${DB_NAME:-appdb}
-      POSTGRES_USER: ${DB_USER:-admin}
-      POSTGRES_PASSWORD: ${DB_PASSWORD:-admin123}
+      POSTGRES_DB: {{ db_name }}
+      POSTGRES_USER: {{ db_user }}
+      POSTGRES_PASSWORD: {{ db_password }}
     volumes:
       - db_data:/var/lib/postgresql/data
 
@@ -17,7 +17,7 @@ services:
     ports:
       - "3000:3000"
     environment:
-      DATABASE_URL: postgresql://${DB_USER:-admin}:${DB_PASSWORD:-admin123}@db:5432/${DB_NAME:-appdb}
+      DATABASE_URL: postgresql://{{ db_user }}:{{ db_password }}@db:5432/{{ db_name }}
     depends_on:
       - db
 

@@ -1,0 +1,43 @@
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: app-db
+    restart: always
+    environment:
+      POSTGRES_DB: ${DB_NAME:-appdb}
+      POSTGRES_USER: ${DB_USER:-admin}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-admin123}
+    volumes:
+      - db_data:/var/lib/postgresql/data
+
+  backend:
+    image: {{ registry_url }}/backend:latest
+    container_name: app-backend
+    restart: always
+    ports:
+      - "3000:3000"
+    environment:
+      DATABASE_URL: postgresql://${DB_USER:-admin}:${DB_PASSWORD:-admin123}@db:5432/${DB_NAME:-appdb}
+    depends_on:
+      - db
+
+  frontend:
+    image: {{ registry_url }}/frontend:latest
+    container_name: app-frontend
+    restart: always
+    ports:
+      - "80:80"
+    depends_on:
+      - backend
+
+  adminer:
+    image: adminer:latest
+    container_name: app-adminer
+    restart: always
+    ports:
+      - "8081:8080"
+    depends_on:
+      - db
+
+volumes:
+  db_data:

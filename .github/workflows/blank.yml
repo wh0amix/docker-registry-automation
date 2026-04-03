@@ -1,1 +1,135 @@
+name: Deploy Application
+
+on:
+  workflow_dispatch:
+
+env:
+  AWS_REGION: eu-west-3
+  REGISTRY_URL: ${{ secrets.REGISTRY_IP }}:443
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      # --------------------------------------------------------
+      # 0. CHECKOUT DU CODE
+      # --------------------------------------------------------
+      - name: Checkout du code
+        uses: actions/checkout@v4
+
+      # --------------------------------------------------------
+      # 1. BUILD & PUSH DES IMAGES VERS LE REGISTRE PRIVE
+      # --------------------------------------------------------
+      - name: Login au registre Docker prive
+        run: echo "${{ secrets.REGISTRY_PASSWORD }}" | docker login ${{ env.REGISTRY_URL }} -u ${{ secrets.REGISTRY_USER }} --password-stdin
+
+      - name: Build et push de l'image Backend
+        run: |
+          docker build -t ${{ env.REGISTRY_URL }}/backend:latest ./backend
+          docker push ${{ env.REGISTRY_URL }}/backend:latest
+
+      - name: Build et push de l'image Frontend
+        run: |
+          docker build -t ${{ env.REGISTRY_URL }}/frontend:latest ./frontend
+          docker push ${{ env.REGISTRY_URL }}/frontend:latest
+
+      # --------------------------------------------------------
+      # 2. TERRAFORM - PROVISIONING INFRASTRUCTURE
+      # --------------------------------------------------------
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_wrapper: false
+
+      - name: Terraform Init
+        working-directory: infra
+        run: terraform init
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+
+      - name: Terraform Apply
+        working-directory: infra
+        run: terraform apply -auto-approve
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+
+      # --------------------------------------------------------
+      # 3. BRIDGE TERRAFORM -> ANSIBLE
+      # --------------------------------------------------------
+      - name: Recuperation des outputs Terraform
+        working-directory: infra
+        run: |
+          echo "SERVER_IP=$(terraform output -raw instance_ip)" >> $GITHUB_ENV
+          terraform output -raw private_key_pem > ${{ github.workspace }}/key.pem
+          chmod 600 ${{ github.workspace }}/key.pem
+
+      - name: Generation de l'inventaire Ansible
+        run: |
+          cat > inventory.ini << EOF
+          [app_servers]
+          ${{ env.SERVER_IP }} ansible_user=ubuntu ansible_ssh_private_key_file=${{ github.workspace }}/key.pem ansible_ssh_common_args='-o StrictHostKeyChecking=no'
+          EOF
+
+      - name: Attente que le serveur SSH soit pret
+        run: |
+          for i in $(seq 1 30); do
+            if ssh -o StrictHostKeyChecking=no -o ConnectTimeout=5 -i ${{ github.workspace }}/key.pem ubuntu@${{ env.SERVER_IP }} "echo ok" 2>/dev/null; then
+              echo "SSH pret"
+              exit 0
+            fi
+            echo "Tentative $i/30 - SSH pas encore pret..."
+            sleep 10
+          done
+          echo "Timeout SSH" && exit 1
+
+      # --------------------------------------------------------
+      # 4. ANSIBLE - CONFIGURATION & DEPLOIEMENT
+      # --------------------------------------------------------
+      - name: Installation d'Ansible
+        run: pip install ansible
+
+      - name: Execution du playbook Ansible
+        run: |
+          ansible-playbook -i inventory.ini ansible/playbook.yml \
+            --extra-vars "registry_url=${{ env.REGISTRY_URL }} registry_user=${{ secrets.REGISTRY_USER }} registry_password=${{ secrets.REGISTRY_PASSWORD }}"
+
+      # --------------------------------------------------------
+      # 5. VALIDATION POST-DEPLOIEMENT
+      # --------------------------------------------------------
+      - name: Test du Frontend
+        run: |
+          for i in $(seq 1 10); do
+            if curl -s -o /dev/null -w "%{http_code}" http://${{ env.SERVER_IP }} | grep -q "200"; then
+              echo "Frontend OK (200)"
+              exit 0
+            fi
+            echo "Tentative $i/10..."
+            sleep 5
+          done
+          echo "Frontend KO" && exit 1
+
+      - name: Test du Backend API
+        run: |
+          for i in $(seq 1 10); do
+            if curl -s -o /dev/null -w "%{http_code}" http://${{ env.SERVER_IP }}:3000 | grep -q "200"; then
+              echo "Backend OK (200)"
+              exit 0
+            fi
+            echo "Tentative $i/10..."
+            sleep 5
+          done
+          echo "Backend KO" && exit 1
+
+      - name: Resume du deploiement
+        run: |
+          echo "========================================="
+          echo "  DEPLOIEMENT TERMINE AVEC SUCCES"
+          echo "========================================="
+          echo "Frontend  : http://${{ env.SERVER_IP }}"
+          echo "Backend   : http://${{ env.SERVER_IP }}:3000"
+          echo "Adminer   : http://${{ env.SERVER_IP }}:8081"
+          echo "========================================="
 

@@ -43,7 +43,7 @@ resource "aws_key_pair" "deployer" {
 # --------------------------------------------------------
 resource "aws_security_group" "app_sg" {
   name        = "app-sg"
-  description = "Security group pour l'application"
+  description = "Security group pour application"
 
   # SSH (Ansible uniquement)
   ingress {

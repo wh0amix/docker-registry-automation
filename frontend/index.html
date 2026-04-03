@@ -1,0 +1,14 @@
+<!DOCTYPE html>
+<html>
+<head><title>App Dashboard</title></head>
+<body>
+<h1>Dashboard</h1>
+<p>Backend status: <span id="status">loading...</span></p>
+<script>
+fetch('/api/health')
+  .then(r => r.json())
+  .then(d => document.getElementById('status').textContent = d.status)
+  .catch(() => document.getElementById('status').textContent = 'offline');
+</script>
+</body>
+</html>

@@ -33,7 +33,22 @@
         enabled: true
 
     # --------------------------------------------------------
-    # 2. AUTHENTIFICATION AU REGISTRE PRIVE
+    # 2. CONFIGURATION DU REGISTRE AUTO-SIGNE
+    # --------------------------------------------------------
+    - name: Configuration de Docker pour accepter le registre auto-signe
+      copy:
+        dest: /etc/docker/daemon.json
+        content: |
+          {"insecure-registries": ["{{ registry_url }}"]}
+        mode: '0644'
+
+    - name: Redemarrage de Docker pour appliquer la configuration
+      systemd:
+        name: docker
+        state: restarted
+
+    # --------------------------------------------------------
+    # 3. AUTHENTIFICATION AU REGISTRE PRIVE
     # --------------------------------------------------------
     - name: Login au registre Docker prive
       command: >
@@ -42,7 +57,7 @@
         -p {{ registry_password }}
 
     # --------------------------------------------------------
-    # 3. CREATION DE L'ARBORESCENCE
+    # 4. CREATION DE L'ARBORESCENCE
     # --------------------------------------------------------
     - name: Creation du dossier projet
       file:
@@ -53,7 +68,7 @@
         mode: '0755'
 
     # --------------------------------------------------------
-    # 4. DEPLOIEMENT DU DOCKER-COMPOSE
+    # 5. DEPLOIEMENT DU DOCKER-COMPOSE
     # --------------------------------------------------------
     - name: Copie du docker-compose.prod.yml
       template:
@@ -64,7 +79,7 @@
         mode: '0644'
 
     # --------------------------------------------------------
-    # 5. PULL DES IMAGES & DEMARRAGE
+    # 6. PULL DES IMAGES & DEMARRAGE
     # --------------------------------------------------------
     - name: Pull des images depuis le registre prive
       command: docker compose pull
@@ -83,7 +98,7 @@
         chdir: "{{ project_dir }}"
 
     # --------------------------------------------------------
-    # 6. ATTENTE QUE LES SERVICES SOIENT PRETS
+    # 7. ATTENTE QUE LES SERVICES SOIENT PRETS
     # --------------------------------------------------------
     - name: Attente du demarrage des conteneurs
       pause:

@@ -34,15 +34,15 @@ resource "tls_private_key" "deployer" {
 }
 
 resource "aws_key_pair" "deployer" {
-  key_name   = "app-deployer-key"
-  public_key = tls_private_key.deployer.public_key_openssh
+  key_name_prefix = "app-deployer-key-"
+  public_key      = tls_private_key.deployer.public_key_openssh
 }
 
 # --------------------------------------------------------
 # 3. SECURITY GROUP
 # --------------------------------------------------------
 resource "aws_security_group" "app_sg" {
-  name        = "app-sg"
+  name_prefix = "app-sg-"
   description = "Security group pour application"
 
   # SSH (Ansible uniquement)

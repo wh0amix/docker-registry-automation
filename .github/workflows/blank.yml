@@ -21,6 +21,12 @@ jobs:
       # --------------------------------------------------------
       # 1. BUILD & PUSH DES IMAGES VERS LE REGISTRE PRIVE
       # --------------------------------------------------------
+      - name: Configurer Docker pour le registre auto-signe
+        run: |
+          sudo mkdir -p /etc/docker
+          echo '{"insecure-registries": ["${{ env.REGISTRY_URL }}"]}' | sudo tee /etc/docker/daemon.json
+          sudo systemctl restart docker
+
       - name: Login au registre Docker prive
         run: echo "${{ secrets.REGISTRY_PASSWORD }}" | docker login ${{ env.REGISTRY_URL }} -u ${{ secrets.REGISTRY_USER }} --password-stdin
 

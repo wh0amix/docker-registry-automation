@@ -66,7 +66,7 @@ jobs:
           terraform output -raw private_key_pem > ${{ github.workspace }}/key.pem
           chmod 600 ${{ github.workspace }}/key.pem
 
-      - name: Generation de l'inventaire Ansible
+      - name: Generation de l inventaire Ansible
         run: |
           cat > inventory.ini << EOF
           [app_servers]
@@ -88,13 +88,13 @@ jobs:
       # --------------------------------------------------------
       # 4. ANSIBLE - CONFIGURATION & DEPLOIEMENT
       # --------------------------------------------------------
-      - name: Installation d'Ansible
+      - name: Installation d Ansible
         run: pip install ansible
 
       - name: Execution du playbook Ansible
         run: |
           ansible-playbook -i inventory.ini ansible/playbook.yml \
-            --extra-vars "registry_url=${{ env.REGISTRY_URL }} registry_user=${{ secrets.REGISTRY_USER }} registry_password=${{ secrets.REGISTRY_PASSWORD }}"
+            --extra-vars "registry_url=${{ env.REGISTRY_URL }} registry_user=${{ secrets.REGISTRY_USER }} registry_password=${{ secrets.REGISTRY_PASSWORD }} db_name=${{ secrets.DB_NAME }} db_user=${{ secrets.DB_USER }} db_password=${{ secrets.DB_PASSWORD }}"
 
       # --------------------------------------------------------
       # 5. VALIDATION POST-DEPLOIEMENT
@@ -102,11 +102,12 @@ jobs:
       - name: Test du Frontend
         run: |
           for i in $(seq 1 10); do
-            if curl -s -o /dev/null -w "%{http_code}" http://${{ env.SERVER_IP }} | grep -q "200"; then
-              echo "Frontend OK (200)"
+            STATUS=$(curl -s -o /dev/null -w "%{http_code}" http://${{ env.SERVER_IP }} 2>/dev/null || echo "000")
+            if [ "$STATUS" = "200" ]; then
+              echo "Frontend OK (HTTP $STATUS)"
               exit 0
             fi
-            echo "Tentative $i/10..."
+            echo "Tentative $i/10 - HTTP $STATUS"
             sleep 5
           done
           echo "Frontend KO" && exit 1
@@ -114,22 +115,34 @@ jobs:
       - name: Test du Backend API
         run: |
           for i in $(seq 1 10); do
-            if curl -s -o /dev/null -w "%{http_code}" http://${{ env.SERVER_IP }}:3000 | grep -q "200"; then
-              echo "Backend OK (200)"
+            STATUS=$(curl -s -o /dev/null -w "%{http_code}" http://${{ env.SERVER_IP }}:3000/api/health 2>/dev/null || echo "000")
+            if [ "$STATUS" = "200" ]; then
+              echo "Backend OK (HTTP $STATUS)"
               exit 0
             fi
-            echo "Tentative $i/10..."
+            echo "Tentative $i/10 - HTTP $STATUS"
             sleep 5
           done
           echo "Backend KO" && exit 1
 
       - name: Resume du deploiement
+        if: success()
         run: |
           echo "========================================="
-          echo "  DEPLOIEMENT TERMINE AVEC SUCCES"
+          echo "DEPLOIEMENT TERMINE AVEC SUCCES"
           echo "========================================="
           echo "Frontend  : http://${{ env.SERVER_IP }}"
           echo "Backend   : http://${{ env.SERVER_IP }}:3000"
           echo "Adminer   : http://${{ env.SERVER_IP }}:8081"
           echo "========================================="
 
+      - name: Resume en cas d erreur
+        if: failure()
+        run: |
+          echo "========================================="
+          echo "DEPLOIEMENT ECHOUE"
+          echo "========================================="
+          echo "IP Serveur: ${{ env.SERVER_IP }}"
+          echo "Verifier les logs ci-dessus"
+          echo "========================================="
+          exit 1

@@ -1,0 +1,5 @@
+Lien du repo : https://github.com/wh0amix/docker-registry-automation
+
+Adresse IP publique du projet : http://51.44.20.90/
+
+Adresse IP publique du registry : https://13.39.82.199/
